@@ -13,7 +13,6 @@ from kodekloud_downloader.helpers import (
     download_video,
     is_normal_content,
     normalize_name,
-    parse_token,
 )
 from kodekloud_downloader.models.course import CourseDetail
 from kodekloud_downloader.models.courses import Course
@@ -82,14 +81,16 @@ def parse_course_from_url(url: str) -> CourseDetail:
 
 def download_course(
     course: Union[Course, CourseDetail],
-    cookie: str,
+    token: str,
     quality: str,
     output_dir: Union[str, Path],
     max_duplicate_count: int,
 ) -> None:
     session = requests.Session()
-    session_token = parse_token(cookie)
-    headers = {"authorization": f"bearer {session_token}"}
+    headers = {
+        "authorization": f"Bearer {token}",
+        "accept": "application/json",
+    }
 
     course_detail = (
         fetch_course_detail(course.slug) if isinstance(course, Course) else course
@@ -119,19 +120,30 @@ def download_course(
                     lesson_data.get("video_url")
                     or lesson_data.get("vimeo_url")
                     or lesson_data.get("asset_url")
-                    or (lesson_data.get("content", {}) if isinstance(lesson_data.get("content"), dict) else {}).get("video_url")
-                    or (lesson_data.get("content", {}) if isinstance(lesson_data.get("content"), dict) else {}).get("vimeo_url")
+                    or (
+                        lesson_data.get("content", {})
+                        if isinstance(lesson_data.get("content"), dict)
+                        else {}
+                    ).get("video_url")
+                    or (
+                        lesson_data.get("content", {})
+                        if isinstance(lesson_data.get("content"), dict)
+                        else {}
+                    ).get("vimeo_url")
                 )
 
                 if not lesson_video_url:
                     import json
-                    logger.error(f"No video_url found for lesson {lesson.id} ({lesson.title})")
+                    logger.error(
+                        f"No video_url found for lesson {lesson.id} ({lesson.title})"
+                    )
                     print("DEBUG lesson_data:")
                     print(json.dumps(lesson_data, indent=2))
                     continue
 
-                # Vimeo player link
-                current_video_url = f"https://player.vimeo.com/video/{lesson_video_url.split('/')[-1]}"
+                current_video_url = (
+                    f"https://player.vimeo.com/video/{lesson_video_url.split('/')[-1]}"
+                )
 
                 if (
                     current_video_url in downloaded_videos
@@ -139,16 +151,16 @@ def download_course(
                 ):
                     raise SystemExit(
                         f"The following video is downloaded more than {max_duplicate_count} times."
-                        "\nYour cookie might have expired or you don't have access/enrolled to the course."
-                        "\nPlease refresh/regenerate the cookie or enroll in the course and try again."
+                        "\nYour token might have expired or you don't have access/enrolled to the course."
+                        "\nPlease refresh/regenerate the token and try again."
                     )
 
-                download_video_lesson(current_video_url, file_path, cookie, quality)
+                download_video_lesson(current_video_url, file_path, token, quality)
                 downloaded_videos[current_video_url] += 1
 
             else:
                 lesson_url = f"https://learn.kodekloud.com/user/courses/{course.slug}/module/{module.id}/lesson/{lesson.id}"
-                download_resource_lesson(lesson_url, file_path, cookie)
+                download_resource_lesson(lesson_url, file_path, token)
 
 
 def create_file_path(
@@ -169,7 +181,7 @@ def create_file_path(
 
 
 def download_video_lesson(
-    lesson_video_url, file_path: Path, cookie: str, quality: str
+    lesson_video_url, file_path: Path, token: str, quality: str
 ) -> None:
     logger.info(f"Writing video file... {file_path}...")
     file_path.parent.mkdir(parents=True, exist_ok=True)
@@ -178,10 +190,10 @@ def download_video_lesson(
         download_video(
             url=lesson_video_url,
             output_path=file_path,
-            cookie=cookie,
+            cookie=token,  # ⚠️ if download_video still expects "cookie", we just pass token here
             quality=quality,
         )
-    except yt_dlp.utils.UnsupportedError as ex:
+    except yt_dlp.utils.UnsupportedError:
         logger.error(
             f"Could not download video in link {lesson_video_url}. "
             "Please open link manually and verify that video exists!"
@@ -192,8 +204,12 @@ def download_video_lesson(
         )
 
 
-def download_resource_lesson(lesson_url, file_path: Path, cookie: str) -> None:
-    page = requests.get(lesson_url)
+def download_resource_lesson(lesson_url, file_path: Path, token: str) -> None:
+    headers = {
+        "authorization": f"Bearer {token}",
+        "accept": "text/html",
+    }
+    page = requests.get(lesson_url, headers=headers)
     soup = BeautifulSoup(page.content, "html.parser")
     content = soup.find("div", class_="learndash_content_wrap")
 
@@ -203,4 +219,4 @@ def download_resource_lesson(lesson_url, file_path: Path, cookie: str) -> None:
         file_path.with_suffix(".md").write_text(
             markdownify.markdownify(content.prettify()), encoding="utf-8"
         )
-        download_all_pdf(content=content, download_path=file_path.parent, cookie=cookie)
+        download_all_pdf(content=content, download_path=file_path.parent, cookie=token)
