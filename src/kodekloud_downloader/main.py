@@ -48,7 +48,7 @@ def download_quiz(output_dir: str, sep: bool) -> None:
             if script := question.code.get("script"):
                 quiz_markdown.append(f"\n**Code**: \n{script}")
             if question.explanation:
-                quiz_markdown.append(f"\n**Explanation**: {question.explanation}")
+                quiz_markdown.append(f"\n**Explaination**: {question.explanation}")
             if question.documentationLink:
                 quiz_markdown.append(
                     f"\n**Documentation Link**: {question.documentationLink}"
@@ -90,7 +90,6 @@ def download_course(
     session = requests.Session()
     session_token = parse_token(cookie)
     headers = {"authorization": f"bearer {session_token}"}
-    params = {"course_id": course.id}
 
     course_detail = (
         fetch_course_detail(course.slug) if isinstance(course, Course) else course
@@ -109,40 +108,19 @@ def download_course(
             )
 
             if lesson.type == "video":
-                url = f"https://learn-api.kodekloud.com/api/courses/{course.id}"
-                response = session.get(url, headers=headers, params=params)
+                # ✅ fetch lesson details directly
+                url = f"https://learn-api.kodekloud.com/api/lessons/{lesson.id}"
+                response = session.get(url, headers=headers)
                 response.raise_for_status()
-                course_data = response.json()
-
-                # find the lesson inside course modules
-                lesson_data = None
-                for module_data in course_data.get("modules", []):
-                    for l in module_data.get("lessons", []):
-                        if l.get("id") == lesson.id:
-                            lesson_data = l
-                            break
-                    if lesson_data:
-                        break
-
-                if not lesson_data:
-                    logger.error(f"Lesson {lesson.id} not found in course {course.id}")
-                    continue
+                lesson_data = response.json()
 
                 # try multiple possible keys
                 lesson_video_url = (
                     lesson_data.get("video_url")
                     or lesson_data.get("vimeo_url")
                     or lesson_data.get("asset_url")
-                    or (
-                        lesson_data.get("content", {})
-                        if isinstance(lesson_data.get("content"), dict)
-                        else {}
-                    ).get("video_url")
-                    or (
-                        lesson_data.get("content", {})
-                        if isinstance(lesson_data.get("content"), dict)
-                        else {}
-                    ).get("vimeo_url")
+                    or (lesson_data.get("content", {}) if isinstance(lesson_data.get("content"), dict) else {}).get("video_url")
+                    or (lesson_data.get("content", {}) if isinstance(lesson_data.get("content"), dict) else {}).get("vimeo_url")
                 )
 
                 if not lesson_video_url:
@@ -152,7 +130,7 @@ def download_course(
                     print(json.dumps(lesson_data, indent=2))
                     continue
 
-                # Vimeo link
+                # Vimeo player link
                 current_video_url = f"https://player.vimeo.com/video/{lesson_video_url.split('/')[-1]}"
 
                 if (
@@ -167,6 +145,7 @@ def download_course(
 
                 download_video_lesson(current_video_url, file_path, cookie, quality)
                 downloaded_videos[current_video_url] += 1
+
             else:
                 lesson_url = f"https://learn.kodekloud.com/user/courses/{course.slug}/module/{module.id}/lesson/{lesson.id}"
                 download_resource_lesson(lesson_url, file_path, cookie)
@@ -202,7 +181,7 @@ def download_video_lesson(
             cookie=cookie,
             quality=quality,
         )
-    except yt_dlp.utils.UnsupportedError:
+    except yt_dlp.utils.UnsupportedError as ex:
         logger.error(
             f"Could not download video in link {lesson_video_url}. "
             "Please open link manually and verify that video exists!"
