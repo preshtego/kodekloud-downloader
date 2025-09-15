@@ -1,58 +1,54 @@
+import logging
+import click
+from pathlib import Path
+
+from kodekloud_downloader.main import (
+    parse_course_from_url,
+    download_course,
+    download_quiz,
+)
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+
+@click.group()
+def kodekloud():
+    """KodeKloud Downloader CLI"""
+    pass
+
+
 @kodekloud.command()
-@click.argument("course_url", required=False)
-@click.option(
-    "--quality",
-    "-q",
-    default="1080p",
-    type=click.Choice([quality.value for quality in Quality]),
-    help="Quality of the video to be downloaded.",
-)
-@click.option(
-    "--output-dir",
-    "-o",
-    default=Path.home() / "Downloads",
-    help="Output directory where downloaded files will be stored.",
-)
-@click.option(
-    "--token",
-    "-t",
-    required=True,
-    help="Bearer token. Copy from DevTools → Network tab → any `api/lessons` request → Headers → Authorization.",
-)
-@click.option(
-    "--max-duplicate-count",
-    "-mdc",
-    default=3,
-    type=int,
-    help="If same video is downloaded this many times, then download stops",
-)
-def dl(
-    course_url,
-    quality: str,
-    output_dir: Union[Path, str],
-    token,
-    max_duplicate_count: int,
-):
-    if course_url is None:
-        courses = collect_all_courses()
-        selected_courses = select_courses(courses)
-        for selected_course in selected_courses:
-            download_course(
-                course=selected_course,
-                token=token,  # 🔄 changed from cookie
-                quality=quality,
-                output_dir=output_dir,
-                max_duplicate_count=max_duplicate_count,
-            )
-    elif validators.url(course_url):
-        course_detail = parse_course_from_url(course_url)
-        download_course(
-            course=course_detail,
-            token=token,  # 🔄 changed from cookie
-            quality=quality,
-            output_dir=output_dir,
-            max_duplicate_count=max_duplicate_count,
-        )
-    else:
-        logging.error("Please enter a valid URL")
-        SystemExit(1)
+@click.argument("url")
+@click.option("--token", required=True, help="Bearer token from DevTools")
+@click.option("--quality", default="720p", help="Video quality (default: 720p)")
+@click.option("--output-dir", default="./downloads", help="Directory to save course")
+@click.option("--max-duplicate-count", default=3, help="Max retries before token is considered expired")
+def dl(url, token, quality, output_dir, max_duplicate_count):
+    """
+    Download a course from KodeKloud.
+
+    URL: course page link (e.g. https://learn.kodekloud.com/course/docker-for-the-absolute-beginner)
+    """
+    logger.info(f"Fetching course from {url}...")
+    course = parse_course_from_url(url)
+
+    download_course(
+        course=course,
+        token=token,
+        quality=quality,
+        output_dir=Path(output_dir),
+        max_duplicate_count=max_duplicate_count,
+    )
+
+
+@kodekloud.command()
+@click.option("--output-dir", default="./downloads/quizzes", help="Directory to save quizzes")
+@click.option("--sep", is_flag=True, help="Save each quiz separately")
+def quizzes(output_dir, sep):
+    """Download all KodeKloud quizzes as Markdown."""
+    download_quiz(output_dir, sep)
+
+
+if __name__ == "__main__":
+    kodekloud()
