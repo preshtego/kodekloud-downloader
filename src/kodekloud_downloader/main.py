@@ -139,7 +139,7 @@ def download_course(
             )
 
             if lesson.type == "video":
-                url = f"https://learn-api.kodekloud.com/api/lessons/{lesson.id}"
+                url = f"https://learn-api.kodekloud.com/api/courses/{course.id}"
 
                 response = session.get(url, headers=headers, params=params)
                 response.raise_for_status()
