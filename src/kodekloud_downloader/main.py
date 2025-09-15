@@ -128,9 +128,28 @@ def download_course(
                     logger.error(f"Lesson {lesson.id} not found in course {course.id}")
                     continue
 
-                lesson_video_url = lesson_data.get("video_url")
+                # try multiple possible keys
+                lesson_video_url = (
+                    lesson_data.get("video_url")
+                    or lesson_data.get("vimeo_url")
+                    or lesson_data.get("asset_url")
+                    or (
+                        lesson_data.get("content", {})
+                        if isinstance(lesson_data.get("content"), dict)
+                        else {}
+                    ).get("video_url")
+                    or (
+                        lesson_data.get("content", {})
+                        if isinstance(lesson_data.get("content"), dict)
+                        else {}
+                    ).get("vimeo_url")
+                )
+
                 if not lesson_video_url:
+                    import json
                     logger.error(f"No video_url found for lesson {lesson.id} ({lesson.title})")
+                    print("DEBUG lesson_data:")
+                    print(json.dumps(lesson_data, indent=2))
                     continue
 
                 # Vimeo link
